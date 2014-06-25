@@ -1,13 +1,16 @@
 from collections import defaultdict
+from recordtype import recordtype
 import copy
 import sys
 import csv
 import threading
 
+ClusterLink = recordtype('Link', 'count records')
 
 class Cluster():
+
     # Static class variable for cluster links
-    links = defaultdict(lambda: defaultdict(int))
+    links = defaultdict(lambda: defaultdict(lambda: ClusterLink(0, set([]))))
 
     ips = set()
     records = defaultdict(int)
@@ -30,20 +33,20 @@ class Cluster():
 
     def __str__(self):
         return_str = "\n\nCluster "+str(self.id) +\
-                    "\n============\n"\
-                    + str(len(self.ips))+" users:\n"
+                     "\n============\n"\
+                     + str(len(self.ips))+" users:\n"
 
         for ip in self.ips:
             return_str += ip + ", "
 
-        return_str += "\n\n" + str(self.internal_connections) + " internal connections\n"
+        return_str += "\n\n" + str(self.internal_connections) + " internal connections"
         self_links = Cluster.get_links(self.id)
         if len(self_links) > 0:
-            return_str += "Connected clusters: "
+            return_str += "\n\nConnected clusters: "
             for id, strength in self_links.iteritems():
                 return_str += str(id) + " (" + str(strength) + "), "
-
-        return_str += "\n\nMost popular records:\n"
+        return_str += "\n\n"+str(len(self.records))+" records"
+        return_str += "\nMost popular:\n"
         self_sorted_records = sorted(self.records.items(), key=lambda x: x[1], reverse=True)
         counter = 0
         for record_id, count in self_sorted_records:
@@ -58,16 +61,17 @@ class Cluster():
         self.ips.append(new_ip)
 
     @classmethod
-    def add_link(cls, cl1, cl2):
-        cls.links[cl1][cl2] += 1
+    def add_link(cls, cl1, cl2, records):
+        cls.links[cl1][cl2].count += 1
+        cls.links[cl1][cl2].records.update(records)
 
     @classmethod
     def get_links(cls, start_id):
-        links_dict = defaultdict(int)
+        links_dict = defaultdict(lambda: ClusterLink(0, set([])))
 
         if start_id in cls.links:
-            for linked_id, count in cls.links[start_id].iteritems():
-                links_dict[linked_id] = count
+            for linked_id, cluster_link in cls.links[start_id].iteritems():
+                links_dict[linked_id] = cluster_link
 
         for link_id, linked_ids in cls.links.iteritems():
             if start_id in linked_ids:
@@ -88,7 +92,9 @@ class Cluster():
 
             for id_2, count in ids.iteritems():
                 if id_2 == from_id:
-                    new_link_dict[to_id][id_1] += cls.links[id_1][id_2]
+                    new_link_dict[to_id][id_1].count += cls.links[id_1][id_2].count
+                    new_link_dict[to_id][id_1].records.update(cls.links[id_1][id_2].records)
+
                     del new_link_dict[id_1][id_2]
 
         cls.links = new_link_dict
@@ -116,7 +122,7 @@ def assign_to_cluster(cluster_objects, ip1, ip2, records):
         if ip1 in cluster_object.ips:
             ip1_cluster = cluster_object.id
 
-            # If both are already in cluster, +1 to internal connections and return
+            # If both are already in cluster, add records, +1 to internal connections and return
             if ip2 in cluster_object.ips:
                 for record in records:
                     cluster_object.records[record] += 1
@@ -129,7 +135,7 @@ def assign_to_cluster(cluster_objects, ip1, ip2, records):
 
     # IPs are found in separate clusters. Add a link
     if ip1_cluster >= 0 and ip2_cluster >= 0:
-        Cluster.add_link(ip1_cluster, ip2_cluster)
+        Cluster.add_link(ip1_cluster, ip2_cluster, records)
 
         # Add records to both clusters
         for record in records:
@@ -139,14 +145,14 @@ def assign_to_cluster(cluster_objects, ip1, ip2, records):
         # Also, merge clusters if the link is stronger than five
         merge_clusters(cluster_objects, ip1_cluster, ip2_cluster, 5)
 
-    # IP1 found. Add ip2 to its cluster
+    # IP1 found. Add IP2 to its cluster
     elif ip1_cluster >= 0:
         cluster_objects[ip1_cluster].add_ip(ip2)
         for record in records:
             cluster_objects[ip1_cluster].records[record] += 1
         cluster_objects[ip1_cluster].internal_connections += 1
 
-    # IP2 found. Add ip2 to its cluster
+    # IP2 found. Add IP1 to its cluster
     elif ip2_cluster >= 0:
         cluster_objects[ip2_cluster].add_ip(ip1)
         for record in records:
@@ -162,9 +168,9 @@ def assign_to_cluster(cluster_objects, ip1, ip2, records):
 
 
 def merge_clusters(cluster_objects, ip1_cluster, ip2_cluster, limit):
-    links = Cluster.get_links(ip1_cluster)
+    ip1_ip2_links = Cluster.get_links(ip1_cluster)[ip2_cluster]
 
-    if links[ip2_cluster] < limit:
+    if ip1_ip2_links.count < limit:
         return False
 
     cluster1 = cluster_objects[ip1_cluster]
@@ -177,9 +183,13 @@ def merge_clusters(cluster_objects, ip1_cluster, ip2_cluster, limit):
     for record in cluster2.records:
         cluster1.records[record] += 1
 
+    # Add the common records to cluster 1
+    for record in ip1_ip2_links.records:
+        cluster1.records[record] += 1
+
     # Increase the number of internal connections to the sum plus the number of links
     # between the clusters
-    cluster1.internal_connections += (cluster2.internal_connections + links[ip2_cluster])
+    cluster1.internal_connections += (cluster2.internal_connections + ip1_ip2_links.count)
 
     # Change all cluster-links to reflect the merge
     Cluster.update_links(cluster2.id, cluster1.id)
@@ -187,9 +197,7 @@ def merge_clusters(cluster_objects, ip1_cluster, ip2_cluster, limit):
     return True
 
 
-def main():
-    input_file = sys.argv[1]
-
+def create_clusters(input_file):
     try:
         log = open(input_file, 'r')
     except IOError:
@@ -232,6 +240,14 @@ def main():
         sys.stdout.write("\rProcessed " + str(counter) + " of " + str(len(pruned_ip_recs)) + " ips")
         sys.stdout.flush()
 
+
+    # Sort the ip pairs by amount of shared records, to make sure ips aren't "stolen" by
+    # lesser clusters
+    #print "Sorting IP pairs"
+    #for ip1, ips in ip_pairs.iteritems():
+        #sorted_ips = sorted(ips.items(), key=lambda x: len(x.get))
+
+
     print "\n\nCreating clusters..."
     pair_length = len(ip_pairs)
     counter = 0
@@ -252,7 +268,7 @@ def main():
 
     # Remove clusters with less than 40 ips
     pruned_clusters = []
-    ip_lm = 40
+    ip_lm = 1
     for id, cluster in enumerate(clusters):
         if len(cluster.ips) >= ip_lm:
             pruned_clusters.append(cluster)
@@ -262,8 +278,11 @@ def main():
 
     # Print the resulting clusters
     sorted_pruned_clusters = sorted(pruned_clusters, key=lambda x: len(x.ips), reverse=True)
-    for cluster in sorted_pruned_clusters:
-        print cluster
+    return sorted_pruned_clusters
 
+
+def main():
+    for cluster in create_clusters(sys.argv[1]):
+        print cluster
 
 if __name__ == "__main__": main()
