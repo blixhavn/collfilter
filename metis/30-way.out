@@ -1,0 +1,34 @@
+******************************************************************************
+METIS 5.0 Copyright 1998-13, Regents of the University of Minnesota
+ (HEAD: , Built on: Jul  1 2014, 14:23:44)
+ size of idx_t: 32bits, real_t: 32bits, idx_t *: 64bits
+
+Graph Information -----------------------------------------------------------
+ Name: /Users/blixhavn/PycharmProjects/CollFilter/metis/full.graph, #Vertices: 69981, #Edges: 46584779, #Parts: 30
+
+Options ---------------------------------------------------------------------
+ ptype=kway, objtype=cut, ctype=shem, rtype=greedy, iptype=metisrb
+ dbglvl=0, ufactor=1.030, no2hop=NO, minconn=NO, contig=NO, nooutput=NO
+ seed=-1, niter=10, ncuts=1
+
+Direct k-way Partitioning ---------------------------------------------------
+ - Edgecut: 28969262, communication volume: 1596379.
+
+ - Balance:
+     constraint #0:  1.030 out of 0.000
+
+ - Most overweight partition:
+     pid: 3, actual: 2402, desired: 2332, ratio: 1.03.
+
+ - Subdomain connectivity: max: 29, min: 29, avg: 29.00
+
+ - The original graph had 1243 connected components and the resulting
+   partitioning after removing the cut edges has 1313 components.
+Timing Information ----------------------------------------------------------
+  I/O:          		   9.393 sec
+  Partitioning: 		  25.023 sec   (METIS time)
+  Reporting:    		   2.582 sec
+
+Memory Information ----------------------------------------------------------
+  Max memory used:		 1446.798 MB
+******************************************************************************
